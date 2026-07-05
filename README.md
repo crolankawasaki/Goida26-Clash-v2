@@ -1,92 +1,80 @@
-# 🚀 Goida26 Clash Meta Subscription
+# 🚀 Goida 26 by Crolan
 
-**Автоматическая, самообновляемая подписка** для Clash Meta (mihomo) на основе **Goida 26**.  
-Все серверы из исходного списка — без потерь, каждый час.
+Это готовая подписка для VPN-приложений, которые работают на ядре **Clash Meta**.  
+Внутри — **все серверы** из актуального списка Goida 26, собранные в одну простую группу.  
+Никаких автовыборов и лишних настроек — открыл, выбрал сервер, пользуешься.
 
 ---
 
-### 📊 Текущее состояние
+## 🔗 Ссылка на подписку
+https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/config.yaml
+
+Скопируй её и вставь в своё приложение.
+
+---
+
+## 📊 Живой счётчик
 
 <!-- PROXY_COUNT_START -->
-🔄 **Сейчас в подписке:** 2862 серверов  
-🕒 **Последнее обновление:** 05.07.2026 10:08 UTC
+🔄 **Сейчас в подписке:** 0 серверов  
+🕒 **Последнее обновление:** никогда
 <!-- PROXY_COUNT_END -->
 
----
-
-## ⚡ Быстрый старт
-
-Добавь эту ссылку в своё приложение: 
-
-
-После обновления появятся три группы:
-
-| Группа | Тип | Описание |
-|--------|-----|----------|
-| 🚀 **Auto-Select** | url-test | Самый быстрый сервер из всех |
-| 🌍 **Global** | select | Ручной выбор любого сервера |
-| 🛑 **Direct** | select | Напрямую, без прокси |
+> Цифры обновляются автоматически каждый час. Ты всегда видишь актуальное количество серверов.
 
 ---
 
-## 📱 Поддерживаемые приложения
+## 📱 В какие приложения можно добавить?
 
-Подписка работает **только** с клиентами на ядре **Clash Meta (mihomo)**.
+Подписка работает только с клиентами, которые поддерживают **Clash Meta** (новые протоколы VLESS, Reality, Hysteria и другие).
 
-### Android
-- [**Karing**](https://play.google.com/store/apps/details?id=com.karing.android) – Google Play  
-  `https://play.google.com/store/apps/details?id=com.karing.android`
-- [**Clash Mi**](https://github.com/MetaCubeX/ClashMi/releases) – скачать APK с GitHub  
-  `https://github.com/MetaCubeX/ClashMi/releases`
+| Платформа | Приложение | Где скачать |
+|-----------|------------|-------------|
+| **Android** | **Karing** (рекомендую) | [Google Play](https://play.google.com/store/apps/details?id=com.karing.android) |
+| **Android** | **Clash Mi** | [GitHub (APK)](https://github.com/MetaCubeX/ClashMi/releases) |
+| **iOS** | **Karing** | [App Store](https://apps.apple.com/app/karing/id6470924433) |
+| **iOS** | **Stash** | [App Store](https://apps.apple.com/app/stash/id1596063349) |
+| **Windows/macOS** | **Clash Verge** | [GitHub](https://github.com/clash-verge-rev/clash-verge-rev/releases) |
+| **Windows/macOS** | **Mihomo Party** | [GitHub](https://github.com/mihomo-party-org/mihomo-party/releases) |
 
-### iOS
-- [**Karing**](https://apps.apple.com/app/karing/id6470924433) – App Store  
-  `https://apps.apple.com/app/karing/id6470924433`
-- [**Stash**](https://apps.apple.com/app/stash/id1596063349) – App Store (поддерживает Clash Meta)  
-  `https://apps.apple.com/app/stash/id1596063349`
-- [**Shadowrocket**](https://apps.apple.com/app/shadowrocket/id932747118) – только с поддержкой Meta‑правил (требуется версия 2.2.29+)
-
-### Windows / macOS / Linux
-- [**Clash Verge**](https://github.com/clash-verge-rev/clash-verge-rev/releases)
-- [**Mihomo Party**](https://github.com/mihomo-party-org/mihomo-party/releases)
-
-> ❗ FLClashX, старые версии Clash for Windows/Android (Premium‑ядро) **не поддерживаются** — они не умеют работать с VLESS, Reality, Hysteria.
+> ❗ Не используй старые версии Clash (FLClashX, Clash for Android Premium) — они не умеют работать с такими серверами.
 
 ---
 
-## 🔄 Как работает автообновление
+## 🛠 Как подключить (за 3 шага)
 
-- **Каждый час** GitHub Actions скачивает исходную подписку, извлекает **все** серверы и сохраняет их в `proxies.yaml`.
-- Конфиг (`config.yaml`) ссылается на этот файл через `proxy-provider`, поэтому клиент всегда получает актуальный список.
-- Вручную можно запустить обновление: **Actions → Update proxies.yaml hourly → Run workflow**.
-- Количество серверов и время последней синхронизации автоматически отображаются в этом README (секция вверху).
+1. Установи приложение из таблицы выше.
+2. Открой приложение, найди раздел **«Подписка»** или **«Профиль»**.
+3. Вставь эту ссылку и нажми «Сохранить» / «Обновить»:  
+   `https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/config.yaml`
 
----
-
-## 🛠 Если серверы не отображаются
-
-1. Зайди в [Actions](../../actions) и убедись, что последний запуск зелёный. Если нет – запусти вручную.
-2. В клиенте **полностью удали старую подписку** и добавь заново (кеш иногда мешает).
-3. Проверь, что используешь приложение с ядром **Clash Meta** (Karing, Clash Mi, Stash и т.д.).
+После загрузки появится группа **«Goida 26 by Crolan»** со всеми серверами. Просто выбери нужный — и готово.
 
 ---
 
-## 📁 Структура репозитория
+## 🔄 Как обновляется список серверов?
 
-- `config.yaml` – основной конфиг подписки.
-- `proxies.yaml` – автоматически обновляемый список всех серверов.
-- `.github/workflows/update-sub.yml` – workflow для ежечасного обновления.
-- `README.md` – этот файл (с живым счётчиком серверов).
-
----
-
-## 🧑‍💻 Для разработчиков
-
-Исходная подписка задаётся через секрет `SOURCE_URL` в настройках репозитория.  
-Workflow использует Python‑скрипт, который умеет парсить все современные протоколы (VLESS, VMess, Trojan, Shadowsocks, Hysteria, TUIC).  
-При необходимости можно изменить расписание (`cron`) или правила маршрутизации в `config.yaml`.
+- Каждый час специальный робот (GitHub Actions) сам забирает свежий список серверов, обрабатывает и сохраняет.
+- Тебе **ничего не нужно делать** — в приложении просто нажми «Обновить» в любое время, и ты получишь актуальный набор.
+- Счётчик в этом ридми тоже обновляется автоматически.
 
 ---
 
-**Автор:** [crolankawasaki](https://github.com/crolankawasaki)  
-**Лицензия:** MIT
+## 🆘 Что делать, если серверы не отображаются?
+
+1. Убедись, что ты используешь правильное приложение (см. таблицу выше).
+2. Удали старую подписку из приложения и добавь заново — иногда мешает кэш.
+3. Если долго не обновлялось, зайди в [Actions](../../actions) и запусти workflow вручную (кнопка **Run workflow**).
+4. Убедись, что ссылка открывается в браузере — если нет, значит временная проблема с GitHub.
+
+---
+
+## 👤 Автор
+
+Подготовлено и настроено **Crolan**.  
+Исходный список серверов: Goida 26.  
+Если есть вопросы — пиши в Issues или в Telegram.
+
+---
+
+**Остальное — магия автоматизации. Подключайся и пользуйся.**
