@@ -2,7 +2,7 @@ name: Update proxies.yaml hourly
 
 on:
   schedule:
-    - cron: '0 * * * *'   # каждый час
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -26,28 +26,86 @@ jobs:
           SOURCE_URL: ${{ secrets.SOURCE_URL }}
         run: |
           python -c "
-          import os, base64, yaml, requests
-          url = os.environ['SOURCE_URL']
-          resp = requests.get(url, timeout=30)
-          resp.raise_for_status()
+          import os, base64, yaml, requests, sys, re
+
+          url = os.environ.get('SOURCE_URL')
+          if not url:
+              print('ERROR: SOURCE_URL is not set')
+              sys.exit(1)
+
+          print(f'Fetching from: {url}')
+          try:
+              resp = requests.get(url, timeout=30)
+              resp.raise_for_status()
+          except Exception as e:
+              print(f'ERROR fetching URL: {e}')
+              sys.exit(1)
+
           raw = resp.text.strip()
+          print(f'Received {len(raw)} bytes.')
+          # Покажем первые 200 символов
+          print('First 200 chars:', raw[:200])
+
           # Пробуем декодировать base64
           try:
               decoded = base64.b64decode(raw).decode('utf-8')
               if 'proxies:' in decoded:
                   raw = decoded
-          except:
-              pass
-          data = yaml.safe_load(raw)
-          if not data or 'proxies' not in data:
-              if isinstance(data, list):
+                  print('Decoded from base64, contains proxies.')
+          except Exception as e:
+              print(f'Base64 decode failed or not needed: {e}')
+
+          # Попытка 1: обычный safe_load
+          proxies = []
+          try:
+              data = yaml.safe_load(raw)
+              if isinstance(data, dict) and 'proxies' in data:
+                  proxies = data['proxies']
+              elif isinstance(data, list):
                   proxies = data
-              else:
-                  raise ValueError('No proxies found')
-          else:
-              proxies = data['proxies']
+              if proxies:
+                  print(f'Loaded {len(proxies)} proxies via safe_load.')
+          except Exception as e:
+              print(f'safe_load failed: {e}')
+              print('Trying fallback parser...')
+              # Попытка 2: строчный парсер для невалидного YAML
+              lines = raw.split('\n')
+              in_proxies = False
+              current_proxy = ''
+              for line in lines:
+                  # Ищем начало секции proxies:
+                  if not in_proxies:
+                      if line.strip().startswith('proxies:'):
+                          in_proxies = True
+                      continue
+                  # Если встретили другой ключ верхнего уровня – выходим
+                  if line and not line.startswith(' ') and not line.startswith('-') and not line.startswith('  '):
+                      if ':' in line and not line.strip().startswith('-'):
+                          break
+                  # Собираем прокси (каждый начинается с "- ")
+                  if line.strip().startswith('- ') and current_proxy:
+                      # Сохраняем предыдущий
+                      try:
+                          proxies.append(yaml.safe_load(current_proxy)[0])
+                      except:
+                          pass
+                      current_proxy = line
+                  else:
+                      current_proxy += '\n' + line
+              if current_proxy:
+                  try:
+                      proxies.append(yaml.safe_load(current_proxy)[0])
+                  except:
+                      pass
+              print(f'Fallback parser extracted {len(proxies)} proxies.')
+
+          if not proxies:
+              print('ERROR: No proxies found after all attempts.')
+              sys.exit(1)
+
           with open('proxies.yaml', 'w') as f:
               yaml.dump({'proxies': proxies}, f, allow_unicode=True, sort_keys=False)
+
           print(f'proxies.yaml updated with {len(proxies)} servers.')
           "
 
