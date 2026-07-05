@@ -1,4 +1,4 @@
-name: Build simple Goida 26 config
+name: Build Goida 26 config (Auto + Proxy)
 
 on:
   schedule:
@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml requests
 
-      - name: Generate Goida 26 by Crolan config.yaml
+      - name: Generate config.yaml with Auto-Select + Proxy group
         env:
           SOURCE_URL: ${{ secrets.SOURCE_URL }}
         run: |
@@ -29,10 +29,10 @@ jobs:
           import os, sys, base64, re, json, yaml, requests
           from urllib.parse import urlparse, parse_qs, unquote
 
+          # ---------- Парсеры (VLESS, VMess, Trojan, SS, Hysteria, TUIC) ----------
           def safe_name(name):
               return name.strip()[:80]
 
-          # ---------- Парсеры (VLESS, VMess, Trojan, SS, Hysteria, TUIC) ----------
           def parse_vless(uri):
               m = re.match(r'vless://([a-f0-9-]+)@([^:]+):(\d+)\?(\S+)#(.+)', uri)
               if not m: return None
@@ -209,35 +209,55 @@ jobs:
 
           proxy_names = [p['name'] for p in proxies]
 
-          # ---------- Минималистичный конфиг ----------
+          # ---------- Конфиг с разделением на Auto-Select и Proxy ----------
           config = {
+              'mixed-port': 7890,
+              'allow-lan': True,
+              'mode': 'rule',
+              'log-level': 'info',
+              'external-controller': '0.0.0.0:9090',
               'proxies': proxies,
               'proxy-groups': [
                   {
-                      'name': 'Goida 26 by Crolan',
+                      'name': '🚀 Auto-Select',
+                      'type': 'url-test',
+                      'proxies': proxy_names,
+                      'url': 'http://www.gstatic.com/generate_204',
+                      'interval': 300
+                  },
+                  {
+                      'name': '🌍 Proxy',
                       'type': 'select',
-                      'proxies': proxy_names
+                      'proxies': ['🚀 Auto-Select', 'DIRECT'] + proxy_names
+                  },
+                  {
+                      'name': '🛑 Direct',
+                      'type': 'select',
+                      'proxies': ['DIRECT']
                   }
               ],
               'rules': [
-                  'MATCH,Goida 26 by Crolan'
+                  'DOMAIN-SUFFIX,local,DIRECT',
+                  'IP-CIDR,10.0.0.0/8,DIRECT',
+                  'IP-CIDR,127.0.0.0/8,DIRECT',
+                  'IP-CIDR,172.16.0.0/12,DIRECT',
+                  'IP-CIDR,192.168.0.0/16,DIRECT',
+                  'MATCH,🚀 Auto-Select'
               ]
           }
 
-          # Записываем с комментарием в первой строке
           with open('config.yaml', 'w', encoding='utf-8') as f:
               f.write('# Goida 26 by Crolan\n')
               yaml.dump(config, f, allow_unicode=True, sort_keys=False)
 
           print(f'config.yaml written with {len(proxies)} proxies.')
           "
-
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add config.yaml
           git diff --staged --quiet || (
-            git commit -m "🔄 Goida 26 by Crolan updated [skip ci]"
+            git commit -m "🔄 Goida 26 config (Auto-Select + Proxy) [skip ci]"
             git push
           )
