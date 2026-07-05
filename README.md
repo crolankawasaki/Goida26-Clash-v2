@@ -66,8 +66,7 @@
 
 1. Проверь, что используешь **нужное приложение** (см. список выше).
 2. Удали старую подписку и добавь заново — кэш может мешать.
-3. Запусти обновление вручную: [открой Actions](https://github.com/crolankawasaki/Goida26-Clash-v2/actions) и нажми **Run workflow**.
-4. Если ничего не помогло — напиши в [Issues](https://github.com/crolankawasaki/Goida26-Clash-v2/issues).
+3. Если ничего не помогло — напиши в [Issues](https://github.com/crolankawasaki/Goida26-Clash-v2/issues).
 
 ---
 
