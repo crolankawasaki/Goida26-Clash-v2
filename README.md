@@ -29,7 +29,7 @@
 Подписка работает только с клиентами, поддерживающими **Clash Meta** (VLESS, Reality, Hysteria и др.).
 
 ### Android
-- [**Karing** (Google Play)](https://play.google.com/store/apps/details?id=com.karing.android)
+- [**Karing** (GitHub)](https://github.com/KaringX/karing/releases/)
 - [**Clash Mi** (APK с GitHub)](https://github.com/MetaCubeX/ClashMi/releases)
 
 ### iOS
