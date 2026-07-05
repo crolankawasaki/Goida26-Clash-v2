@@ -43,50 +43,54 @@ jobs:
 
           raw = resp.text.strip()
           print(f'Received {len(raw)} bytes.')
-          # Покажем первые 200 символов
-          print('First 200 chars:', raw[:200])
+          print('First 500 chars:', raw[:500])
 
-          # Пробуем декодировать base64
+          # Попытка 1: base64 декодирование
+          decoded_raw = raw
           try:
               decoded = base64.b64decode(raw).decode('utf-8')
-              if 'proxies:' in decoded:
-                  raw = decoded
-                  print('Decoded from base64, contains proxies.')
+              print('Base64 decode successful.')
+              if 'proxies:' in decoded or 'ss://' in decoded or 'vless://' in decoded:
+                  decoded_raw = decoded
+                  print('Using decoded content.')
           except Exception as e:
-              print(f'Base64 decode failed or not needed: {e}')
+              print(f'Not base64 or decode failed: {e}')
 
-          # Попытка 1: обычный safe_load
           proxies = []
+
+          # Попытка 2: обычный YAML safe_load
           try:
-              data = yaml.safe_load(raw)
+              data = yaml.safe_load(decoded_raw)
               if isinstance(data, dict) and 'proxies' in data:
                   proxies = data['proxies']
+                  print(f'safe_load found {len(proxies)} proxies under \"proxies\"')
               elif isinstance(data, list):
                   proxies = data
-              if proxies:
-                  print(f'Loaded {len(proxies)} proxies via safe_load.')
+                  print(f'safe_load got a list of {len(proxies)} items')
+              else:
+                  print('safe_load result is not dict with proxies and not list')
           except Exception as e:
               print(f'safe_load failed: {e}')
-              print('Trying fallback parser...')
-              # Попытка 2: строчный парсер для невалидного YAML
-              lines = raw.split('\n')
+
+          # Попытка 3: если safe_load не дал прокси, попробуем построчный парсер для невалидного YAML
+          if not proxies:
+              print('Trying line-by-line fallback parser...')
+              lines = decoded_raw.split('\n')
               in_proxies = False
               current_proxy = ''
               for line in lines:
-                  # Ищем начало секции proxies:
                   if not in_proxies:
-                      if line.strip().startswith('proxies:'):
+                      if re.match(r'^\s*proxies\s*:', line):
                           in_proxies = True
                       continue
-                  # Если встретили другой ключ верхнего уровня – выходим
-                  if line and not line.startswith(' ') and not line.startswith('-') and not line.startswith('  '):
-                      if ':' in line and not line.strip().startswith('-'):
-                          break
-                  # Собираем прокси (каждый начинается с "- ")
+                  # Проверяем, не начался ли другой ключ верхнего уровня
+                  if line and not line.startswith(' ') and not line.startswith('-') and not line.startswith('  ') and ':' in line and not line.strip().startswith('-'):
+                      break
                   if line.strip().startswith('- ') and current_proxy:
-                      # Сохраняем предыдущий
                       try:
-                          proxies.append(yaml.safe_load(current_proxy)[0])
+                          parsed = yaml.safe_load(current_proxy)
+                          if isinstance(parsed, list):
+                              proxies.extend(parsed)
                       except:
                           pass
                       current_proxy = line
@@ -94,27 +98,50 @@ jobs:
                       current_proxy += '\n' + line
               if current_proxy:
                   try:
-                      proxies.append(yaml.safe_load(current_proxy)[0])
+                      parsed = yaml.safe_load(current_proxy)
+                      if isinstance(parsed, list):
+                          proxies.extend(parsed)
                   except:
                       pass
               print(f'Fallback parser extracted {len(proxies)} proxies.')
 
+          # Попытка 4: если proxies всё ещё пусты, вдруг это просто список ссылок (каждая строка = прокси)
           if not proxies:
-              print('ERROR: No proxies found after all attempts.')
-              sys.exit(1)
+              print('Trying raw link list parser...')
+              link_protos = ['ss://', 'vless://', 'vmess://', 'trojan://', 'hysteria://', 'tuic://']
+              for line in decoded_raw.splitlines():
+                  line = line.strip()
+                  if any(line.startswith(p) for p in link_protos):
+                      proxies.append({'name': f'server-{len(proxies)+1}', 'server': line, 'type': 'external'})  # заглушка
+              if proxies:
+                  print(f'Raw link parser found {len(proxies)} links. They will be saved as external-type proxies (may need manual adjust).')
+                  # Но Clash Meta не умеет external, поэтому лучше сохранить в отдельный файл-предупреждение
+                  with open('proxies_raw_links.yaml', 'w') as f:
+                      yaml.dump({'raw_links': [p['server'] for p in proxies]}, f)
+                  # и не будем записывать proxies.yaml, чтобы не ломать конфиг
+                  proxies = []  # очищаем, так как невалидный формат
 
-          with open('proxies.yaml', 'w') as f:
-              yaml.dump({'proxies': proxies}, f, allow_unicode=True, sort_keys=False)
-
-          print(f'proxies.yaml updated with {len(proxies)} servers.')
+          if not proxies:
+              print('WARNING: No proxies were extracted. proxies.yaml will NOT be created/updated.')
+              # Выходим без ошибки, чтобы git add не упал
+              sys.exit(0)
+          else:
+              with open('proxies.yaml', 'w', encoding='utf-8') as f:
+                  yaml.dump({'proxies': proxies}, f, allow_unicode=True, sort_keys=False)
+              print(f'proxies.yaml successfully written with {len(proxies)} proxies.')
           "
 
-      - name: Commit and push if changed
+      - name: Check if proxies.yaml exists and commit
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add proxies.yaml
-          git diff --staged --quiet || (
-            git commit -m "🔄 Auto-update proxies [skip ci]"
-            git push
-          )
+          if [ -f proxies.yaml ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add proxies.yaml
+            git diff --staged --quiet || (
+              git commit -m "🔄 Auto-update proxies [skip ci]"
+              git push
+            )
+            echo "proxies.yaml committed."
+          else
+            echo "proxies.yaml does not exist, skipping commit."
+          fi
