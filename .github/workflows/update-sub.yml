@@ -1,4 +1,4 @@
-name: Build perfect config (Auto + Global + Direct)
+name: Update proxies.yaml hourly
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  update:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,21 +21,22 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml requests
 
-      - name: Generate full config.yaml
+      - name: Fetch and save proxies + update README
         env:
           SOURCE_URL: ${{ secrets.SOURCE_URL }}
         run: |
           python -c "
           import os, sys, base64, re, json, yaml, requests
           from urllib.parse import urlparse, parse_qs, unquote
+          from datetime import datetime, timezone
 
-          # ---------- Функции парсинга прокси (без изменений) ----------
+          # ---------- Парсеры (VLESS, VMess, Trojan, SS, Hysteria, TUIC) ----------
           def safe_name(name):
               return name.strip()[:80]
 
           def parse_vless(uri):
               m = re.match(r'vless://([a-f0-9-]+)@([^:]+):(\d+)\?(\S+)#(.+)', uri)
-              if not m: return {'name': safe_name(uri[-50:]), 'type': 'vless', 'server': 'unknown', 'port': 443, 'uuid': 'unknown'}
+              if not m: return None
               uuid, server, port = m.group(1), m.group(2), int(m.group(3))
               query = m.group(4)
               name = safe_name(unquote(m.group(5)))
@@ -59,19 +60,26 @@ jobs:
 
           def parse_vmess(uri):
               encoded = uri[8:]
+              remark = ''
               if '?' in encoded:
-                  encoded, remark = encoded.split('?', 1)
-                  remark = unquote(remark.split('=')[-1]) if 'remark=' in remark else ''
-              else: remark = ''
+                  encoded, qs = encoded.split('?', 1)
+                  if 'remark=' in qs:
+                      remark = unquote(qs.split('remark=')[-1].split('&')[0])
               try:
                   missing_padding = len(encoded) % 4
                   if missing_padding: encoded += '=' * (4 - missing_padding)
                   decoded = base64.b64decode(encoded).decode('utf-8')
                   vmess = json.loads(decoded)
-              except: return {'name': safe_name(uri[-50:]), 'type': 'vmess', 'server': 'unknown', 'port': 0, 'uuid': 'unknown'}
-              proxy = {'name': safe_name(remark or vmess.get('ps', 'vmess')), 'type': 'vmess',
-                       'server': vmess.get('add', ''), 'port': int(vmess.get('port', 0)), 'uuid': vmess.get('id', ''),
-                       'alterId': int(vmess.get('aid', 0)), 'cipher': vmess.get('scy', 'auto')}
+              except: return None
+              proxy = {
+                  'name': safe_name(remark or vmess.get('ps', 'vmess')),
+                  'type': 'vmess',
+                  'server': vmess.get('add', ''),
+                  'port': int(vmess.get('port', 0)),
+                  'uuid': vmess.get('id', ''),
+                  'alterId': int(vmess.get('aid', 0)),
+                  'cipher': vmess.get('scy', 'auto'),
+              }
               net = vmess.get('net', '')
               if net: proxy['network'] = net
               if 'host' in vmess: proxy['host'] = vmess['host']
@@ -83,9 +91,10 @@ jobs:
 
           def parse_trojan(uri):
               m = re.match(r'trojan://([^@]+)@([^:]+):(\d+)\?(\S+)#(.+)', uri)
-              if not m: return {'name': safe_name(uri[-50:]), 'type': 'trojan', 'server': 'unknown', 'port': 443, 'password': ''}
+              if not m: return None
               password, server, port = m.group(1), m.group(2), int(m.group(3))
-              query, name = m.group(4), safe_name(unquote(m.group(5)))
+              query = m.group(4)
+              name = safe_name(unquote(m.group(5)))
               params = parse_qs(query)
               for k in params: params[k] = params[k][0] if isinstance(params[k], list) else params[k]
               proxy = {'name': name, 'type': 'trojan', 'server': server, 'port': port, 'password': unquote(password)}
@@ -97,39 +106,40 @@ jobs:
               return proxy
 
           def parse_ss(uri):
-              if uri.startswith('ss://'):
-                  uri = uri[5:]
-                  if '@' in uri:
-                      if '#' in uri: uri, name = uri.split('#', 1); name = unquote(name)
-                      else: name = 'ss'
-                      parts = uri.split('@', 1)
-                      userinfo, serverport = parts[0], parts[1] if len(parts) > 1 else ''
-                      if ':' in serverport: server, port = serverport.split(':', 1)
-                      else: server, port = serverport, '8388'
-                      try:
-                          missing_padding = len(userinfo) % 4
-                          if missing_padding: userinfo += '=' * (4 - missing_padding)
-                          decoded = base64.b64decode(userinfo).decode('utf-8')
-                          method, password = decoded.split(':', 1)
-                      except: method, password = userinfo.split(':', 1) if ':' in userinfo else ('aes-256-gcm', userinfo)
-                      return {'name': safe_name(name), 'type': 'ss', 'server': server, 'port': int(port), 'cipher': method, 'password': password}
-                  else:
-                      if '#' in uri: b64, name = uri.split('#', 1); name = unquote(name)
-                      else: b64, name = uri, 'ss'
-                      try:
-                          missing_padding = len(b64) % 4
-                          if missing_padding: b64 += '=' * (4 - missing_padding)
-                          decoded = base64.b64decode(b64).decode('utf-8')
-                          method_pwd, serverport = decoded.rsplit('@', 1)
-                          method, password = method_pwd.split(':', 1)
-                          server, port = serverport.split(':', 1) if ':' in serverport else (serverport, '8388')
-                      except: return {'name': name, 'type': 'ss', 'server': 'unknown', 'port': 0, 'cipher': 'aes-256-gcm', 'password': ''}
-                      return {'name': safe_name(name), 'type': 'ss', 'server': server, 'port': int(port), 'cipher': method, 'password': password}
-              return {'name': 'unknown', 'type': 'ss'}
+              if not uri.startswith('ss://'): return None
+              uri = uri[5:]
+              if '@' in uri:
+                  if '#' in uri: uri, name = uri.split('#', 1); name = unquote(name)
+                  else: name = 'ss'
+                  parts = uri.split('@', 1)
+                  userinfo, serverport = parts[0], parts[1] if len(parts) > 1 else ''
+                  if ':' in serverport: server, port = serverport.split(':', 1)
+                  else: server, port = serverport, '8388'
+                  try:
+                      missing_padding = len(userinfo) % 4
+                      if missing_padding: userinfo += '=' * (4 - missing_padding)
+                      decoded = base64.b64decode(userinfo).decode('utf-8')
+                      method, password = decoded.split(':', 1)
+                  except:
+                      if ':' in userinfo: method, password = userinfo.split(':', 1)
+                      else: return None
+                  return {'name': safe_name(name), 'type': 'ss', 'server': server, 'port': int(port), 'cipher': method, 'password': password}
+              else:
+                  if '#' in uri: b64, name = uri.split('#', 1); name = unquote(name)
+                  else: b64, name = uri, 'ss'
+                  try:
+                      missing_padding = len(b64) % 4
+                      if missing_padding: b64 += '=' * (4 - missing_padding)
+                      decoded = base64.b64decode(b64).decode('utf-8')
+                      method_pwd, serverport = decoded.rsplit('@', 1)
+                      method, password = method_pwd.split(':', 1)
+                      server, port = serverport.split(':', 1) if ':' in serverport else (serverport, '8388')
+                  except: return None
+                  return {'name': safe_name(name), 'type': 'ss', 'server': server, 'port': int(port), 'cipher': method, 'password': password}
 
           def parse_hysteria(uri):
               m = re.match(r'(hysteria|hy2)://([^:]+):(\d+)\?(\S+)#?(.*)', uri)
-              if not m: return {'name': safe_name(uri[-50:]), 'type': 'hysteria', 'server': 'unknown', 'port': 443}
+              if not m: return None
               proto, server, port, query = m.group(1), m.group(2), int(m.group(3)), m.group(4)
               name = unquote(m.group(5)) if m.group(5) else f'hysteria-{server}'
               params = parse_qs(query)
@@ -143,58 +153,25 @@ jobs:
 
           def parse_tuic(uri):
               m = re.match(r'tuic://([^:]+):([^@]+)@([^:]+):(\d+)\?(\S+)#?(.*)', uri)
-              if not m: return {'name': safe_name(uri[-50:]), 'type': 'tuic', 'server': 'unknown', 'port': 443}
+              if not m: return None
               uuid, password, server, port = m.group(1), m.group(2), m.group(3), int(m.group(4))
-              query, name = m.group(5), unquote(m.group(6)) if m.group(6) else f'tuic-{server}'
+              query = m.group(5)
+              name = unquote(m.group(6)) if m.group(6) else f'tuic-{server}'
               params = parse_qs(query)
               for k in params: params[k] = params[k][0] if isinstance(params[k], list) else params[k]
               return {'name': safe_name(name), 'type': 'tuic', 'server': server, 'port': port, 'uuid': uuid, 'password': password,
                       'congestion_control': params.get('congestion_control', 'bbr'), 'sni': params.get('sni', server),
                       'skip-cert-verify': params.get('allow_insecure', '0') == '1'}
 
-          def parse_ssh(uri):
-              m = re.match(r'ssh://([^:]+):([^@]+)@([^:]+):(\d+)#?(.*)', uri)
-              if not m: return {'name': safe_name(uri[-50:]), 'type': 'ssh', 'server': 'unknown', 'port': 22}
-              user, password, server, port = m.group(1), m.group(2), m.group(3), int(m.group(4))
-              name = unquote(m.group(5)) if m.group(5) else f'ssh-{server}'
-              return {'name': safe_name(name), 'type': 'ssh', 'server': server, 'port': port, 'username': user, 'password': password}
-
-          def parse_wireguard(uri):
-              m = re.match(r'wireguard://([^@]+)@([^:]+):(\d+)\?(\S+)#?(.*)', uri)
-              if not m: return {'name': safe_name(uri[-50:]), 'type': 'wireguard', 'server': 'unknown', 'port': 51820}
-              private_key, server, port = m.group(1), m.group(2), int(m.group(3))
-              query, name = m.group(4), unquote(m.group(5)) if m.group(5) else f'wg-{server}'
-              params = parse_qs(query)
-              for k in params: params[k] = params[k][0] if isinstance(params[k], list) else params[k]
-              return {'name': safe_name(name), 'type': 'wireguard', 'server': server, 'port': port,
-                      'private-key': private_key, 'public-key': params.get('publicKey', ''),
-                      'preshared-key': params.get('presharedKey', ''), 'mtu': int(params.get('mtu', 1420))}
-
-          def parse_http_socks(uri):
-              parsed = urlparse(uri)
-              name = unquote(parsed.fragment) if parsed.fragment else parsed.hostname or 'proxy'
-              proxy = {'name': safe_name(name), 'type': 'http' if uri.startswith('http') else 'socks5',
-                       'server': parsed.hostname or '', 'port': parsed.port or 1080}
-              if parsed.username:
-                  proxy['username'] = unquote(parsed.username)
-                  proxy['password'] = unquote(parsed.password) if parsed.password else ''
-              return proxy
-
-          # ---------- Основной код ----------
+          # ---------- Основной сбор ----------
           url = os.environ['SOURCE_URL']
-          if not url:
-              print('ERROR: SOURCE_URL is not set')
-              sys.exit(1)
-
-          print(f'Fetching from: {url}')
           resp = requests.get(url, timeout=30)
           resp.raise_for_status()
           raw = resp.text.strip()
-          print(f'Received {len(raw)} bytes.')
 
           try:
               decoded = base64.b64decode(raw).decode('utf-8')
-              if any(decoded.lstrip().startswith(p) for p in ['proxies:', 'ss://', 'vless://', 'trojan://', 'vmess://', 'hysteria://', 'hy2://', 'tuic://']):
+              if any(decoded.lstrip().startswith(p) for p in ['vless://', 'vmess://', 'trojan://', 'ss://', 'hysteria://', 'hy2://', 'tuic://']):
                   raw = decoded
           except: pass
 
@@ -202,73 +179,54 @@ jobs:
           for line in raw.splitlines():
               line = line.strip()
               if not line or line.startswith('#'): continue
-              try:
-                  if line.startswith('vless://'): proxies.append(parse_vless(line))
-                  elif line.startswith('vmess://'): proxies.append(parse_vmess(line))
-                  elif line.startswith('trojan://'): proxies.append(parse_trojan(line))
-                  elif line.startswith('ss://'): proxies.append(parse_ss(line))
-                  elif line.startswith('hysteria://') or line.startswith('hy2://'): proxies.append(parse_hysteria(line))
-                  elif line.startswith('tuic://'): proxies.append(parse_tuic(line))
-                  elif line.startswith('ssh://'): proxies.append(parse_ssh(line))
-                  elif line.startswith('wireguard://'): proxies.append(parse_wireguard(line))
-                  elif line.startswith('http://') or line.startswith('https://') or line.startswith('socks5://'): proxies.append(parse_http_socks(line))
-              except Exception as e:
-                  print(f'Skipping: {line[:100]}... ({e})')
+              if line.startswith('vless://'): proxies.append(parse_vless(line))
+              elif line.startswith('vmess://'): proxies.append(parse_vmess(line))
+              elif line.startswith('trojan://'): proxies.append(parse_trojan(line))
+              elif line.startswith('ss://'): proxies.append(parse_ss(line))
+              elif line.startswith('hysteria://') or line.startswith('hy2://'): proxies.append(parse_hysteria(line))
+              elif line.startswith('tuic://'): proxies.append(parse_tuic(line))
+
+          # Фильтруем None
+          proxies = [p for p in proxies if p is not None]
 
           if not proxies:
-              print('ERROR: No proxies extracted.')
+              print('ERROR: No proxies extracted')
               sys.exit(1)
 
-          proxy_names = [p['name'] for p in proxies]
+          with open('proxies.yaml', 'w') as f:
+              yaml.dump({'proxies': proxies}, f, allow_unicode=True, sort_keys=False)
 
-          # ---------- Сборка финального конфига ----------
-          config = {
-              'mixed-port': 7890,
-              'allow-lan': True,
-              'mode': 'rule',
-              'log-level': 'info',
-              'external-controller': '0.0.0.0:9090',
-              'proxies': proxies,
-              'proxy-groups': [
-                  {
-                      'name': '🚀 Auto-Select',
-                      'type': 'url-test',
-                      'proxies': proxy_names,
-                      'url': 'http://www.gstatic.com/generate_204',
-                      'interval': 300
-                  },
-                  {
-                      'name': '🌍 Global',
-                      'type': 'select',
-                      'proxies': ['🚀 Auto-Select', 'DIRECT'] + proxy_names
-                  },
-                  {
-                      'name': '🛑 Direct',
-                      'type': 'select',
-                      'proxies': ['DIRECT']
-                  }
-              ],
-              'rules': [
-                  'DOMAIN-SUFFIX,local,DIRECT',
-                  'IP-CIDR,10.0.0.0/8,DIRECT',
-                  'IP-CIDR,127.0.0.0/8,DIRECT',
-                  'IP-CIDR,172.16.0.0/12,DIRECT',
-                  'IP-CIDR,192.168.0.0/16,DIRECT',
-                  'MATCH,🚀 Auto-Select'
-              ]
-          }
+          print(f'proxies.yaml written with {len(proxies)} proxies.')
 
-          with open('config.yaml', 'w', encoding='utf-8') as f:
-              yaml.dump(config, f, allow_unicode=True, sort_keys=False)
+          # Обновляем README
+          now = datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')
+          count_str = f'🔄 **Сейчас в подписке:** {len(proxies)} серверов  \n🕒 **Последнее обновление:** {now}'
 
-          print(f'config.yaml written with {len(proxies)} proxies.')
+          with open('README.md', 'r') as f:
+              readme = f.read()
+
+          # Замена между маркерами
+          start_marker = '<!-- PROXY_COUNT_START -->'
+          end_marker = '<!-- PROXY_COUNT_END -->'
+          if start_marker in readme and end_marker in readme:
+              readme = re.sub(
+                  f'{start_marker}.*?{end_marker}',
+                  f'{start_marker}\n{count_str}\n{end_marker}',
+                  readme,
+                  flags=re.DOTALL
+              )
+              with open('README.md', 'w') as f:
+                  f.write(readme)
+              print('README.md updated with proxy count.')
+          else:
+              print('Warning: Placeholder not found in README, skipping update.')
           "
-      - name: Commit and push
+      - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add config.yaml
+          git add proxies.yaml README.md
           git diff --staged --quiet || (
-            git commit -m "🔄 Perfect config updated [skip ci]"
+            git commit -m "🔄 Update proxies and README counter [skip ci]"
             git push
           )
