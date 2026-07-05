@@ -4213,6 +4213,14 @@ proxies:
   reality-opts:
     public-key: Tl0GCbgfsNHxGGN0TzZt3_OFsPc4xe1kMkn_L3qwiS8
     short-id: 3d8b549801de
+- name: '[OpenRay] 🇫🇷 FR-3278'
+  type: trojan
+  server: playchekers.mooo.com
+  port: 44457
+  password: comlwu2n4xhiby48
+  sni: ya.ru
+  client-fingerprint: edge
+  network: tcp
 - name: '[OpenRay] 🇬🇧 GB-2200'
   type: vless
   server: node5.frost-api.com
@@ -40451,6 +40459,23 @@ proxies:
   network: ws
   host: snowy-feather-39d3.428.workers.dev
   path: /pyip=ProxyIP.US.CMLiussss.net
+- name: 🇫🇷 France [*CIDR]
+  type: trojan
+  server: 216.24.57.1
+  port: 443
+  password: humanity
+  sni: www.calmloud.com
+  network: ws
+  path: /assignment
+- name: 🌐 Anycast-IP | 🇧🇷 🇨🇦 🇫🇮 [*CIDR]
+  type: trojan
+  server: blog.webex.com
+  port: 443
+  password: afbcd89a-5a90-4a44-a42a-be08f444aa3f
+  sni: unnes.ac.id.yxls.eu.cc
+  network: ws
+  host: unnes.ac.id.yxls.eu.cc
+  path: /br-orcl
 - name: '🇷🇺 Beget — #7'
   type: vless
   server: 193.168.46.180
@@ -45678,6 +45703,7 @@ proxy-groups:
   - '[OpenRay] 🇷🇺 RU-28738'
   - '[OpenRay] 🇷🇺 RU-28739'
   - '[OpenRay] 🇷🇺 RU-28758'
+  - '[OpenRay] 🇫🇷 FR-3278'
   - '[OpenRay] 🇬🇧 GB-2200'
   - '[OpenRay] 🇬🇧 GB-2067'
   - '[OpenRay] 🇬🇧 GB-2012'
@@ -48278,6 +48304,8 @@ proxy-groups:
   - 🌐 Anycast-IP | 🇨🇦 🇫🇮 🇺🇸 [*CIDR]
   - 🌐 Anycast-IP | 🇨🇦 🇫🇮 🇺🇸 [*CIDR]
   - 🌐 Anycast-IP | 🇨🇦 🇸🇪 [*CIDR]
+  - 🇫🇷 France [*CIDR]
+  - 🌐 Anycast-IP | 🇧🇷 🇨🇦 🇫🇮 [*CIDR]
   - '🇷🇺 Beget — #7'
   - '🇷🇺 Selectel — #30'
   - '🇷🇺 Selectel — #31'
@@ -48638,7 +48666,7 @@ proxy-groups:
   - 0141 - Универсальный | 20www.liblib | @CID_VPN
   url: http://www.gstatic.com/generate_204
   interval: 300
-- name: 🌍 Proxy
+- name: 🌍 Global
   type: select
   proxies:
   - 🚀 Auto-Select
@@ -49014,6 +49042,7 @@ proxy-groups:
   - '[OpenRay] 🇷🇺 RU-28738'
   - '[OpenRay] 🇷🇺 RU-28739'
   - '[OpenRay] 🇷🇺 RU-28758'
+  - '[OpenRay] 🇫🇷 FR-3278'
   - '[OpenRay] 🇬🇧 GB-2200'
   - '[OpenRay] 🇬🇧 GB-2067'
   - '[OpenRay] 🇬🇧 GB-2012'
@@ -51614,6 +51643,8 @@ proxy-groups:
   - 🌐 Anycast-IP | 🇨🇦 🇫🇮 🇺🇸 [*CIDR]
   - 🌐 Anycast-IP | 🇨🇦 🇫🇮 🇺🇸 [*CIDR]
   - 🌐 Anycast-IP | 🇨🇦 🇸🇪 [*CIDR]
+  - 🇫🇷 France [*CIDR]
+  - 🌐 Anycast-IP | 🇧🇷 🇨🇦 🇫🇮 [*CIDR]
   - '🇷🇺 Beget — #7'
   - '🇷🇺 Selectel — #30'
   - '🇷🇺 Selectel — #31'
@@ -51972,10 +52003,6 @@ proxy-groups:
   - 0139 - Универсальный | 20apple.com | @CID_VPN
   - 0140 - Универсальный | 20www.amd | @CID_VPN
   - 0141 - Универсальный | 20www.liblib | @CID_VPN
-- name: 🛑 Direct
-  type: select
-  proxies:
-  - DIRECT
 rules:
 - DOMAIN-SUFFIX,local,DIRECT
 - IP-CIDR,10.0.0.0/8,DIRECT
