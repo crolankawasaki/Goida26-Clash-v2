@@ -23,7 +23,7 @@
 - [**Clash Mi** (APK с GitHub)](https://github.com/KaringX/clashmi/releases)
 
 ### iOS
-- [**Clash Mi** (App Store)](https://apps.apple.com/app/karing/id6470924433)
+- [**Clash Mi** (App Store)](https://apps.apple.com/us/app/clash-mi/id6744321968)
 - [**Karing** (App Store)](https://apps.apple.com/app/karing/id6470924433)
 - [**Stash** (App Store)](https://apps.apple.com/app/stash/id1596063349)
 
