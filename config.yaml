@@ -7,7 +7,7 @@ external-controller: 0.0.0.0:9090
 proxy-providers:
   all-servers:
     type: http
-    url: "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/proxies.yaml"
+    url: "https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/proxies.yaml"
     interval: 3600
     path: ./proxies/provider.yaml
     health-check:
@@ -34,8 +34,39 @@ proxy-groups:
     proxies:
       - DIRECT
 
+  - name: ⚡ Streaming
+    type: select
+    proxies:
+      - 🚀 Auto-Select
+      - "all-servers"
+
 rules:
+  # Локальные и приватные адреса — напрямую
   - DOMAIN-SUFFIX,local,DIRECT
   - IP-CIDR,10.0.0.0/8,DIRECT
   - IP-CIDR,127.0.0.0/8,DIRECT
+  - IP-CIDR,172.16.0.0/12,DIRECT
+  - IP-CIDR,192.168.0.0/16,DIRECT
+
+  # Российские сайты и сервисы — напрямую (опционально, можешь удалить если не нужно)
+  - DOMAIN-SUFFIX,ru,DIRECT
+  - DOMAIN-SUFFIX,рф,DIRECT
+  - DOMAIN-KEYWORD,yandex,DIRECT
+  - DOMAIN-KEYWORD,mail.ru,DIRECT
+  - DOMAIN-KEYWORD,vk.com,DIRECT
+  - DOMAIN-KEYWORD,odnoklassniki,DIRECT
+  - DOMAIN-KEYWORD,sberbank,DIRECT
+  - DOMAIN-KEYWORD,gosuslugi,DIRECT
+  - DOMAIN-SUFFIX,1tv.ru,DIRECT
+  - DOMAIN-SUFFIX,ntv.ru,DIRECT
+  - DOMAIN-SUFFIX,rbc.ru,DIRECT
+
+  # Стриминговые сервисы через отдельную группу (если нужно разгрузить основной трафик)
+  - DOMAIN-KEYWORD,netflix,⚡ Streaming
+  - DOMAIN-KEYWORD,spotify,⚡ Streaming
+  - DOMAIN-KEYWORD,primevideo,⚡ Streaming
+  - DOMAIN-KEYWORD,disney,⚡ Streaming
+  - DOMAIN-KEYWORD,hbomax,⚡ Streaming
+
+  # Всё остальное — через автоматический выбор
   - MATCH,🚀 Auto-Select
