@@ -6,7 +6,7 @@
 ---
 
 ## 🔗 Ссылка для подключения
-
+https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/config.yaml
 
 Добавь её в своё приложение — и пользуйся.
 
