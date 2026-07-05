@@ -1,263 +1,497 @@
-name: Build Goida 26 config (Auto + Proxy)
+name: Build Goida 26 config (all proxies, no TCP check)
 
 on:
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install pyyaml requests
+        run: pip install requests PyYAML
 
-      - name: Generate config.yaml with Auto-Select + Proxy group
+      - name: Run Updater
         env:
           SOURCE_URL: ${{ secrets.SOURCE_URL }}
         run: |
-          python -c "
-          import os, sys, base64, re, json, yaml, requests
-          from urllib.parse import urlparse, parse_qs, unquote
+          cat > updater.py << 'EOF'
+          import os, sys, base64, json, re, yaml
+          import requests
+          from urllib.parse import urlparse, parse_qs
+          from datetime import datetime, timezone
 
-          # ---------- Парсеры (VLESS, VMess, Trojan, SS, Hysteria, TUIC) ----------
-          def safe_name(name):
-              return name.strip()[:80]
+          SOURCE_URL = os.environ['SOURCE_URL']
+          OUTPUT_FILE = "config.yaml"
 
-          def parse_vless(uri):
-              m = re.match(r'vless://([a-f0-9-]+)@([^:]+):(\d+)\?(\S+)#(.+)', uri)
-              if not m: return None
-              uuid, server, port = m.group(1), m.group(2), int(m.group(3))
-              query = m.group(4)
-              name = safe_name(unquote(m.group(5)))
-              params = parse_qs(query)
-              for k in params: params[k] = params[k][0] if isinstance(params[k], list) else params[k]
-              proxy = {'name': name, 'type': 'vless', 'server': server, 'port': port, 'uuid': uuid}
-              if 'flow' in params: proxy['flow'] = params['flow']
-              if 'security' in params: proxy['security'] = params['security']
-              if 'encryption' in params: proxy['encryption'] = params['encryption']
-              if 'pbk' in params: proxy['pbk'] = params['pbk']
-              if 'sni' in params: proxy['servername'] = params['sni']
-              if 'sid' in params: proxy['sid'] = params['sid']
-              if 'fp' in params: proxy['client-fingerprint'] = params['fp']
-              if 'type' in params: proxy['network'] = params['type']
-              if 'headerType' in params: proxy['headerType'] = params['headerType']
-              if 'host' in params: proxy['host'] = params['host']
-              if 'path' in params: proxy['path'] = params['path']
-              if proxy.get('security') == 'reality':
-                  proxy['reality-opts'] = {'public-key': params.get('pbk', ''), 'short-id': params.get('sid', '')}
-              return proxy
-
+          # ---------- Парсеры (все протоколы) ----------
           def parse_vmess(uri):
-              encoded = uri[8:]
-              remark = ''
-              if '?' in encoded:
-                  encoded, qs = encoded.split('?', 1)
-                  if 'remark=' in qs:
-                      remark = unquote(qs.split('remark=')[-1].split('&')[0])
               try:
-                  missing_padding = len(encoded) % 4
-                  if missing_padding: encoded += '=' * (4 - missing_padding)
-                  decoded = base64.b64decode(encoded).decode('utf-8')
-                  vmess = json.loads(decoded)
-              except: return None
-              proxy = {
-                  'name': safe_name(remark or vmess.get('ps', 'vmess')),
-                  'type': 'vmess',
-                  'server': vmess.get('add', ''),
-                  'port': int(vmess.get('port', 0)),
-                  'uuid': vmess.get('id', ''),
-                  'alterId': int(vmess.get('aid', 0)),
-                  'cipher': vmess.get('scy', 'auto'),
-              }
-              net = vmess.get('net', '')
-              if net: proxy['network'] = net
-              if 'host' in vmess: proxy['host'] = vmess['host']
-              if 'path' in vmess: proxy['path'] = vmess['path']
-              if 'tls' in vmess and vmess['tls'] == 'tls':
-                  proxy['tls'] = True
-                  if 'sni' in vmess: proxy['servername'] = vmess['sni']
-              return proxy
+                  b64_part = uri[8:].strip()
+                  padding = 4 - (len(b64_part) % 4)
+                  if padding != 4:
+                      b64_part += '=' * padding
+                  decoded = base64.b64decode(b64_part).decode('utf-8')
+                  vmess_json = json.loads(decoded)
+                  proxy = {
+                      "name": vmess_json.get("ps", "VMess"),
+                      "type": "vmess",
+                      "server": vmess_json.get("add", ""),
+                      "port": int(vmess_json.get("port", 0)),
+                      "uuid": vmess_json.get("id", ""),
+                      "alterId": int(vmess_json.get("aid", 0)),
+                      "cipher": vmess_json.get("scy", "auto"),
+                      "network": vmess_json.get("net", "tcp"),
+                      "udp": True
+                  }
+                  net = vmess_json.get("net", "tcp")
+                  if net == "ws":
+                      proxy["ws-opts"] = {
+                          "path": vmess_json.get("path", "/"),
+                          "headers": {"Host": vmess_json.get("host", vmess_json.get("add", ""))}
+                      }
+                  elif net == "grpc":
+                      proxy["grpc-opts"] = {"grpc-service-name": vmess_json.get("path", "")}
+                  if vmess_json.get("tls") == "tls":
+                      proxy["tls"] = True
+                      proxy["skip-cert-verify"] = True
+                      proxy["sni"] = vmess_json.get("sni", vmess_json.get("add", ""))
+                  return proxy
+              except:
+                  return None
 
           def parse_trojan(uri):
-              m = re.match(r'trojan://([^@]+)@([^:]+):(\d+)\?(\S+)#(.+)', uri)
-              if not m: return None
-              password, server, port = m.group(1), m.group(2), int(m.group(3))
-              query = m.group(4)
-              name = safe_name(unquote(m.group(5)))
-              params = parse_qs(query)
-              for k in params: params[k] = params[k][0] if isinstance(params[k], list) else params[k]
-              proxy = {'name': name, 'type': 'trojan', 'server': server, 'port': port, 'password': unquote(password)}
-              if 'sni' in params: proxy['sni'] = params['sni']
-              if 'fp' in params: proxy['client-fingerprint'] = params['fp']
-              if 'type' in params: proxy['network'] = params['type']
-              if 'host' in params: proxy['host'] = params['host']
-              if 'path' in params: proxy['path'] = params['path']
-              return proxy
+              try:
+                  parsed = urlparse(uri)
+                  name = requests.utils.unquote(parsed.fragment) if parsed.fragment else "Trojan"
+                  proxy = {
+                      "name": name,
+                      "type": "trojan",
+                      "server": parsed.hostname,
+                      "port": parsed.port or 443,
+                      "password": parsed.username or "",
+                      "udp": True,
+                      "skip-cert-verify": True
+                  }
+                  if parsed.query:
+                      query = parse_qs(parsed.query)
+                      if "sni" in query:
+                          proxy["sni"] = query["sni"][0]
+                      if "type" in query:
+                          net_type = query["type"][0]
+                          if net_type == "ws":
+                              proxy["network"] = "ws"
+                              proxy["ws-opts"] = {
+                                  "path": query.get("path", ["/"])[0],
+                                  "headers": {"Host": query.get("host", [parsed.hostname])[0]}
+                              }
+                          elif net_type == "grpc":
+                              proxy["network"] = "grpc"
+                              proxy["grpc-opts"] = {"grpc-service-name": query.get("serviceName", [""])[0]}
+                  return proxy
+              except:
+                  return None
 
-          def parse_ss(uri):
-              if not uri.startswith('ss://'): return None
-              uri = uri[5:]
-              if '@' in uri:
-                  if '#' in uri: uri, name = uri.split('#', 1); name = unquote(name)
-                  else: name = 'ss'
-                  parts = uri.split('@', 1)
-                  userinfo, serverport = parts[0], parts[1] if len(parts) > 1 else ''
-                  if ':' in serverport: server, port = serverport.split(':', 1)
-                  else: server, port = serverport, '8388'
-                  try:
-                      missing_padding = len(userinfo) % 4
-                      if missing_padding: userinfo += '=' * (4 - missing_padding)
-                      decoded = base64.b64decode(userinfo).decode('utf-8')
-                      method, password = decoded.split(':', 1)
-                  except:
-                      if ':' in userinfo: method, password = userinfo.split(':', 1)
-                      else: return None
-                  return {'name': safe_name(name), 'type': 'ss', 'server': server, 'port': int(port), 'cipher': method, 'password': password}
-              else:
-                  if '#' in uri: b64, name = uri.split('#', 1); name = unquote(name)
-                  else: b64, name = uri, 'ss'
-                  try:
-                      missing_padding = len(b64) % 4
-                      if missing_padding: b64 += '=' * (4 - missing_padding)
-                      decoded = base64.b64decode(b64).decode('utf-8')
-                      method_pwd, serverport = decoded.rsplit('@', 1)
-                      method, password = method_pwd.split(':', 1)
-                      server, port = serverport.split(':', 1) if ':' in serverport else (serverport, '8388')
-                  except: return None
-                  return {'name': safe_name(name), 'type': 'ss', 'server': server, 'port': int(port), 'cipher': method, 'password': password}
+          def parse_shadowsocks(uri):
+              try:
+                  if "#" in uri:
+                      uri_part, name_part = uri.split("#", 1)
+                      name = requests.utils.unquote(name_part)
+                  else:
+                      uri_part = uri
+                      name = "Shadowsocks"
+                  uri_part = uri_part[5:]
+                  if '@' in uri_part:
+                      userinfo, server_port = uri_part.split('@', 1)
+                      try:
+                          padding = 4 - (len(userinfo) % 4)
+                          if padding != 4:
+                              userinfo += '=' * padding
+                          decoded = base64.b64decode(userinfo).decode('utf-8')
+                          cipher, password = decoded.split(':', 1)
+                      except:
+                          if ':' in userinfo:
+                              cipher, password = userinfo.split(':', 1)
+                          else:
+                              cipher, password = "aes-256-gcm", userinfo
+                      server, port = server_port.rsplit(':', 1)
+                      return {
+                          "name": name,
+                          "type": "ss",
+                          "server": server,
+                          "port": int(port),
+                          "cipher": cipher,
+                          "password": password,
+                          "udp": True
+                      }
+                  return None
+              except:
+                  return None
+
+          def parse_vless(uri):
+              try:
+                  parsed = urlparse(uri)
+                  name = requests.utils.unquote(parsed.fragment) if parsed.fragment else "VLESS"
+                  proxy = {
+                      "name": name,
+                      "type": "vless",
+                      "server": parsed.hostname,
+                      "port": parsed.port or 443,
+                      "uuid": parsed.username or "",
+                      "udp": True,
+                      "skip-cert-verify": True,
+                      "encryption": "none"
+                  }
+                  if parsed.query:
+                      query = parse_qs(parsed.query)
+                      if "security" in query and query["security"][0] == "tls":
+                          proxy["tls"] = True
+                      if "sni" in query:
+                          proxy["sni"] = query["sni"][0]
+                      if "type" in query:
+                          net_type = query["type"][0]
+                          if net_type == "ws":
+                              proxy["network"] = "ws"
+                              proxy["ws-opts"] = {
+                                  "path": query.get("path", ["/"])[0],
+                                  "headers": {"Host": query.get("host", [parsed.hostname])[0]}
+                              }
+                          elif net_type == "grpc":
+                              proxy["network"] = "grpc"
+                              proxy["grpc-opts"] = {"grpc-service-name": query.get("serviceName", [""])[0]}
+                      if "security" in query and query["security"][0] == "reality":
+                          proxy["flow"] = query.get("flow", ["xtls-rprx-vision"])[0]
+                          proxy["client-fingerprint"] = query.get("fp", ["chrome"])[0]
+                          proxy["servername"] = query.get("sni", [parsed.hostname])[0]
+                          proxy["reality-opts"] = {
+                              "public-key": query.get("pbk", [""])[0],
+                              "short-id": query.get("sid", [""])[0]
+                          }
+                  return proxy
+              except:
+                  return None
 
           def parse_hysteria(uri):
-              m = re.match(r'(hysteria|hy2)://([^:]+):(\d+)\?(\S+)#?(.*)', uri)
-              if not m: return None
-              proto, server, port, query = m.group(1), m.group(2), int(m.group(3)), m.group(4)
-              name = unquote(m.group(5)) if m.group(5) else f'hysteria-{server}'
-              params = parse_qs(query)
-              for k in params: params[k] = params[k][0] if isinstance(params[k], list) else params[k]
-              proxy = {
-                  'name': safe_name(name),
-                  'type': 'hysteria',
-                  'server': server,
-                  'port': port,
-                  'auth': params.get('auth', ''),
-                  'protocol': params.get('protocol', 'udp'),
-                  'up': params.get('up', ''),
-                  'down': params.get('down', ''),
-              }
-              if 'peer' in params: proxy['sni'] = params['peer']
-              if 'insecure' in params and params['insecure'] == '1': proxy['skip-cert-verify'] = True
-              if proto == 'hy2': proxy['type'] = 'hysteria2'
-              return proxy
+              try:
+                  parsed = urlparse(uri)
+                  name = requests.utils.unquote(parsed.fragment) if parsed.fragment else "Hysteria"
+                  proxy = {
+                      "name": name,
+                      "type": "hysteria",
+                      "server": parsed.hostname,
+                      "port": parsed.port or 443,
+                      "up": 100,
+                      "down": 100,
+                      "skip-cert-verify": True
+                  }
+                  if parsed.query:
+                      query = parse_qs(parsed.query)
+                      if "auth" in query:
+                          proxy["auth-str"] = query["auth"][0]
+                      if "peer" in query:
+                          proxy["sni"] = query["peer"][0]
+                      if "upmbps" in query:
+                          proxy["up"] = int(query["upmbps"][0])
+                      if "downmbps" in query:
+                          proxy["down"] = int(query["downmbps"][0])
+                  return proxy
+              except:
+                  return None
+
+          def parse_hysteria2(uri):
+              try:
+                  parsed = urlparse(uri)
+                  name = requests.utils.unquote(parsed.fragment) if parsed.fragment else "Hysteria2"
+                  password = parsed.username or ""
+                  proxy = {
+                      "name": name,
+                      "type": "hysteria2",
+                      "server": parsed.hostname,
+                      "port": parsed.port or 443,
+                      "password": password,
+                      "skip-cert-verify": True
+                  }
+                  if parsed.query:
+                      query = parse_qs(parsed.query)
+                      if "auth" in query and not password:
+                          proxy["password"] = query["auth"][0]
+                      if "sni" in query:
+                          proxy["sni"] = query["sni"][0]
+                  return proxy
+              except:
+                  return None
 
           def parse_tuic(uri):
-              m = re.match(r'tuic://([^:]+):([^@]+)@([^:]+):(\d+)\?(\S+)#?(.*)', uri)
-              if not m: return None
-              uuid, password, server, port = m.group(1), m.group(2), m.group(3), int(m.group(4))
-              query = m.group(5)
-              name = unquote(m.group(6)) if m.group(6) else f'tuic-{server}'
-              params = parse_qs(query)
-              for k in params: params[k] = params[k][0] if isinstance(params[k], list) else params[k]
-              return {
-                  'name': safe_name(name),
-                  'type': 'tuic',
-                  'server': server,
-                  'port': port,
-                  'uuid': uuid,
-                  'password': password,
-                  'congestion_control': params.get('congestion_control', 'bbr'),
-                  'sni': params.get('sni', server),
-                  'skip-cert-verify': params.get('allow_insecure', '0') == '1',
+              try:
+                  parsed = urlparse(uri)
+                  name = requests.utils.unquote(parsed.fragment) if parsed.fragment else "Tuic"
+                  uuid = ""
+                  password = ""
+                  if parsed.username and ':' in parsed.username:
+                      uuid, password = parsed.username.split(':', 1)
+                  else:
+                      uuid = parsed.username or ""
+                  proxy = {
+                      "name": name,
+                      "type": "tuic",
+                      "server": parsed.hostname,
+                      "port": parsed.port or 443,
+                      "uuid": uuid,
+                      "password": password,
+                      "udp": True,
+                      "skip-cert-verify": True
+                  }
+                  if parsed.query:
+                      query = parse_qs(parsed.query)
+                      if "sni" in query:
+                          proxy["sni"] = query["sni"][0]
+                  return proxy
+              except:
+                  return None
+
+          def parse_wireguard(uri):
+              try:
+                  parsed = urlparse(uri)
+                  name = requests.utils.unquote(parsed.fragment) if parsed.fragment else "WireGuard"
+                  proxy = {
+                      "name": name,
+                      "type": "wireguard",
+                      "server": parsed.hostname,
+                      "port": parsed.port or 51820,
+                      "private-key": parsed.username or "",
+                      "udp": True
+                  }
+                  if parsed.query:
+                      query = parse_qs(parsed.query)
+                      if "publicKey" in query:
+                          proxy["public-key"] = query["publicKey"][0]
+                      if "address" in query:
+                          addresses = query["address"][0].split(',')
+                          proxy["ip"] = addresses[0] if addresses else None
+                      if "mtu" in query:
+                          proxy["mtu"] = int(query["mtu"][0])
+                  return proxy
+              except:
+                  return None
+
+          def parse_socks5(uri):
+              try:
+                  parsed = urlparse(uri)
+                  name = requests.utils.unquote(parsed.fragment) if parsed.fragment else "SOCKS5"
+                  proxy = {
+                      "name": name,
+                      "type": "socks5",
+                      "server": parsed.hostname,
+                      "port": parsed.port or 1080,
+                      "udp": True
+                  }
+                  if parsed.username and parsed.password:
+                      proxy["username"] = parsed.username
+                      proxy["password"] = parsed.password
+                  return proxy
+              except:
+                  return None
+
+          def parse_http(uri):
+              try:
+                  parsed = urlparse(uri)
+                  name = requests.utils.unquote(parsed.fragment) if parsed.fragment else "HTTP"
+                  proxy = {
+                      "name": name,
+                      "type": "http",
+                      "server": parsed.hostname,
+                      "port": parsed.port or 8080,
+                  }
+                  if parsed.username and parsed.password:
+                      proxy["username"] = parsed.username
+                      proxy["password"] = parsed.password
+                  if parsed.scheme == "https":
+                      proxy["tls"] = True
+                      proxy["skip-cert-verify"] = True
+                  return proxy
+              except:
+                  return None
+
+          def parse_shadowtls(uri):
+              try:
+                  parsed = urlparse(uri)
+                  name = requests.utils.unquote(parsed.fragment) if parsed.fragment else "ShadowTLS"
+                  proxy = {
+                      "name": name,
+                      "type": "shadowtls",
+                      "server": parsed.hostname,
+                      "port": parsed.port or 443,
+                      "version": 3,
+                      "skip-cert-verify": True
+                  }
+                  if parsed.query:
+                      query = parse_qs(parsed.query)
+                      if "password" in query:
+                          proxy["password"] = query["password"][0]
+                      if "sni" in query:
+                          proxy["sni"] = query["sni"][0]
+                  return proxy
+              except:
+                  return None
+
+          # ---------- Сбор всех прокси ----------
+          def parse_proxies_from_text(text):
+              proxies = []
+              lines = text.strip().split('\n')
+              parsers = {
+                  'vmess://': parse_vmess,
+                  'trojan://': parse_trojan,
+                  'ss://': parse_shadowsocks,
+                  'vless://': parse_vless,
+                  'socks5://': parse_socks5,
+                  'socks://': parse_socks5,
+                  'http://': parse_http,
+                  'https://': parse_http,
+                  'hysteria://': parse_hysteria,
+                  'hysteria2://': parse_hysteria2,
+                  'hy2://': parse_hysteria2,
+                  'tuic://': parse_tuic,
+                  'wireguard://': parse_wireguard,
+                  'wg://': parse_wireguard,
+                  'shadowtls://': parse_shadowtls,
+              }
+              for line in lines:
+                  line = line.strip()
+                  if not line or line.startswith('#'):
+                      continue
+                  for prefix, parser in parsers.items():
+                      if line.startswith(prefix):
+                          proxy = parser(line)
+                          if proxy:
+                              proxies.append(proxy)
+                          break
+              return proxies
+
+          def fix_duplicate_names(proxies):
+              name_counts = {}
+              fixed = []
+              for p in proxies:
+                  name = p["name"]
+                  if name in name_counts:
+                      name_counts[name] += 1
+                      new_name = f"{name} ({name_counts[name]})"
+                      while new_name in name_counts:
+                          name_counts[name] += 1
+                          new_name = f"{name} ({name_counts[name]})"
+                      p["name"] = new_name
+                      name = new_name
+                  else:
+                      name_counts[name] = 1
+                  fixed.append(p)
+              return fixed
+
+          # ---------- Главный блок ----------
+          def main():
+              print("🚀 Загрузка списка прокси...")
+              try:
+                  response = requests.get(SOURCE_URL, timeout=30)
+                  response.raise_for_status()
+                  content = response.text
+              except Exception as e:
+                  print(f"❌ Ошибка загрузки: {e}")
+                  sys.exit(1)
+
+              print("🔍 Парсинг всех форматов...")
+              all_proxies = parse_proxies_from_text(content)
+              total_parsed = len(all_proxies)
+              print(f"📦 Распознано прокси: {total_parsed}")
+
+              if not all_proxies:
+                  print("❌ Нет ни одного прокси")
+                  sys.exit(1)
+
+              all_proxies = fix_duplicate_names(all_proxies)
+              proxy_names = [p["name"] for p in all_proxies]
+
+              config = {
+                  "proxies": all_proxies,
+                  "proxy-groups": [
+                      {
+                          "name": "🚀 Auto-Select",
+                          "type": "url-test",
+                          "proxies": proxy_names,
+                          "url": "http://www.gstatic.com/generate_204",
+                          "interval": 300
+                      },
+                      {
+                          "name": "🌍 Proxy",
+                          "type": "select",
+                          "proxies": ["🚀 Auto-Select", "DIRECT"] + proxy_names
+                      },
+                      {
+                          "name": "🛑 Direct",
+                          "type": "select",
+                          "proxies": ["DIRECT"]
+                      }
+                  ],
+                  "rules": [
+                      "DOMAIN-SUFFIX,local,DIRECT",
+                      "IP-CIDR,10.0.0.0/8,DIRECT",
+                      "IP-CIDR,127.0.0.0/8,DIRECT",
+                      "IP-CIDR,172.16.0.0/12,DIRECT",
+                      "IP-CIDR,192.168.0.0/16,DIRECT",
+                      "MATCH,🚀 Auto-Select"
+                  ]
               }
 
-          # ---------- Сбор прокси ----------
-          url = os.environ['SOURCE_URL']
-          resp = requests.get(url, timeout=30)
-          resp.raise_for_status()
-          raw = resp.text.strip()
+              with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+                  f.write('# Goida 26 by Crolan\n')
+                  yaml.dump(config, f, allow_unicode=True, sort_keys=False)
 
-          try:
-              decoded = base64.b64decode(raw).decode('utf-8')
-              if any(decoded.lstrip().startswith(p) for p in ['vless://', 'vmess://', 'trojan://', 'ss://', 'hysteria://', 'hy2://', 'tuic://']):
-                  raw = decoded
-          except: pass
+              print(f"✅ config.yaml сохранён, {len(all_proxies)} прокси.")
 
-          proxies = []
-          for line in raw.splitlines():
-              line = line.strip()
-              if not line or line.startswith('#'): continue
-              if line.startswith('vless://'): proxies.append(parse_vless(line))
-              elif line.startswith('vmess://'): proxies.append(parse_vmess(line))
-              elif line.startswith('trojan://'): proxies.append(parse_trojan(line))
-              elif line.startswith('ss://'): proxies.append(parse_ss(line))
-              elif line.startswith('hysteria://') or line.startswith('hy2://'): proxies.append(parse_hysteria(line))
-              elif line.startswith('tuic://'): proxies.append(parse_tuic(line))
+              # Обновление README
+              now = datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')
+              count_str = f'🔄 **Сейчас в подписке:** {len(all_proxies)} серверов  \n🕒 **Последнее обновление:** {now}'
+              try:
+                  with open('README.md', 'r', encoding='utf-8') as f:
+                      readme = f.read()
+                  start = '<!-- PROXY_COUNT_START -->'
+                  end = '<!-- PROXY_COUNT_END -->'
+                  if start in readme and end in readme:
+                      readme = re.sub(
+                          f'{start}.*?{end}',
+                          f'{start}\n{count_str}\n{end}',
+                          readme,
+                          flags=re.DOTALL
+                      )
+                      with open('README.md', 'w', encoding='utf-8') as f:
+                          f.write(readme)
+                      print("📝 README обновлён.")
+                  else:
+                      print("⚠️ Маркеры не найдены в README.")
+              except Exception as e:
+                  print(f"⚠️ Не удалось обновить README: {e}")
 
-          proxies = [p for p in proxies if p is not None]
+          if __name__ == "__main__":
+              main()
+          EOF
 
-          if not proxies:
-              print('ERROR: No proxies extracted')
-              sys.exit(1)
+          python updater.py
 
-          proxy_names = [p['name'] for p in proxies]
-
-          # ---------- Конфиг с разделением на Auto-Select и Proxy ----------
-          config = {
-              'mixed-port': 7890,
-              'allow-lan': True,
-              'mode': 'rule',
-              'log-level': 'info',
-              'external-controller': '0.0.0.0:9090',
-              'proxies': proxies,
-              'proxy-groups': [
-                  {
-                      'name': '🚀 Auto-Select',
-                      'type': 'url-test',
-                      'proxies': proxy_names,
-                      'url': 'http://www.gstatic.com/generate_204',
-                      'interval': 300
-                  },
-                  {
-                      'name': '🌍 Proxy',
-                      'type': 'select',
-                      'proxies': ['🚀 Auto-Select', 'DIRECT'] + proxy_names
-                  },
-                  {
-                      'name': '🛑 Direct',
-                      'type': 'select',
-                      'proxies': ['DIRECT']
-                  }
-              ],
-              'rules': [
-                  'DOMAIN-SUFFIX,local,DIRECT',
-                  'IP-CIDR,10.0.0.0/8,DIRECT',
-                  'IP-CIDR,127.0.0.0/8,DIRECT',
-                  'IP-CIDR,172.16.0.0/12,DIRECT',
-                  'IP-CIDR,192.168.0.0/16,DIRECT',
-                  'MATCH,🚀 Auto-Select'
-              ]
-          }
-
-          with open('config.yaml', 'w', encoding='utf-8') as f:
-              f.write('# Goida 26 by Crolan\n')
-              yaml.dump(config, f, allow_unicode=True, sort_keys=False)
-
-          print(f'config.yaml written with {len(proxies)} proxies.')
-          "
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add config.yaml
+          git add config.yaml README.md
           git diff --staged --quiet || (
-            git commit -m "🔄 Goida 26 config (Auto-Select + Proxy) [skip ci]"
+            git commit -m "🔄 Goida 26 config update [skip ci]"
             git push
           )
