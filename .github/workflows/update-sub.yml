@@ -1,0 +1,62 @@
+name: Update proxies.yaml hourly
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # каждый час
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml requests
+
+      - name: Fetch and save proxies
+        env:
+          SOURCE_URL: ${{ secrets.SOURCE_URL }}
+        run: |
+          python -c "
+          import os, base64, yaml, requests
+          url = os.environ['SOURCE_URL']
+          resp = requests.get(url, timeout=30)
+          resp.raise_for_status()
+          raw = resp.text.strip()
+          # Пробуем декодировать base64
+          try:
+              decoded = base64.b64decode(raw).decode('utf-8')
+              if 'proxies:' in decoded:
+                  raw = decoded
+          except:
+              pass
+          data = yaml.safe_load(raw)
+          if not data or 'proxies' not in data:
+              if isinstance(data, list):
+                  proxies = data
+              else:
+                  raise ValueError('No proxies found')
+          else:
+              proxies = data['proxies']
+          with open('proxies.yaml', 'w') as f:
+              yaml.dump({'proxies': proxies}, f, allow_unicode=True, sort_keys=False)
+          print(f'proxies.yaml updated with {len(proxies)} servers.')
+          "
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add proxies.yaml
+          git diff --staged --quiet || (
+            git commit -m "🔄 Auto-update proxies [skip ci]"
+            git push
+          )
