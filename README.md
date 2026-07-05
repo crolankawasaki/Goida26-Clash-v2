@@ -10,17 +10,7 @@
 
 Добавь её в своё приложение — и пользуйся.
 
----
 
-## 📊 Состояние подписки
-
-<!-- PROXY_COUNT_START -->
-🔄 **Сейчас в подписке:** 0 серверов  
-🕒 **Последнее обновление:** никогда
-<!-- PROXY_COUNT_END -->
-
-> Цифры обновляются каждый час автоматически.  
-> Принудительно обновить можно [тут](https://github.com/crolankawasaki/Goida26-Clash-v2/actions/workflows/update-sub.yml) (кнопка **Run workflow**).
 
 ---
 
@@ -29,8 +19,8 @@
 Подписка работает только с клиентами, поддерживающими **Clash Meta** (VLESS, Reality, Hysteria и др.).
 
 ### Android
-- [**Karing** (GitHub)](https://github.com/KaringX/karing/releases/)
-- [**Clash Mi** (APK с GitHub)](https://github.com/MetaCubeX/ClashMi/releases)
+- [**Karing** (APK с GitHub)](https://github.com/KaringX/karing/releases/)
+- [**Clash Mi** (APK с GitHub)](https://github.com/KaringX/clashmi/releases)
 
 ### iOS
 - [**Karing** (App Store)](https://apps.apple.com/app/karing/id6470924433)
