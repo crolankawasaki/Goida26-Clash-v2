@@ -1,4 +1,4 @@
-name: Update proxies.yaml hourly
+name: Update proxies and config hourly
 
 on:
   schedule:
@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml requests
 
-      - name: Fetch and save proxies + update README
+      - name: Fetch proxies, update config and README
         env:
           SOURCE_URL: ${{ secrets.SOURCE_URL }}
         run: |
@@ -30,7 +30,7 @@ jobs:
           from urllib.parse import urlparse, parse_qs, unquote
           from datetime import datetime, timezone
 
-          # ---------- Парсеры (VLESS, VMess, Trojan, SS, Hysteria, TUIC) ----------
+          # ---------- Все парсеры (VLESS, VMess, Trojan, SS, Hysteria, TUIC) ----------
           def safe_name(name):
               return name.strip()[:80]
 
@@ -144,8 +144,16 @@ jobs:
               name = unquote(m.group(5)) if m.group(5) else f'hysteria-{server}'
               params = parse_qs(query)
               for k in params: params[k] = params[k][0] if isinstance(params[k], list) else params[k]
-              proxy = {'name': safe_name(name), 'type': 'hysteria', 'server': server, 'port': port, 'auth': params.get('auth', ''),
-                       'protocol': params.get('protocol', 'udp'), 'up': params.get('up', ''), 'down': params.get('down', '')}
+              proxy = {
+                  'name': safe_name(name),
+                  'type': 'hysteria',
+                  'server': server,
+                  'port': port,
+                  'auth': params.get('auth', ''),
+                  'protocol': params.get('protocol', 'udp'),
+                  'up': params.get('up', ''),
+                  'down': params.get('down', ''),
+              }
               if 'peer' in params: proxy['sni'] = params['peer']
               if 'insecure' in params and params['insecure'] == '1': proxy['skip-cert-verify'] = True
               if proto == 'hy2': proxy['type'] = 'hysteria2'
@@ -159,9 +167,17 @@ jobs:
               name = unquote(m.group(6)) if m.group(6) else f'tuic-{server}'
               params = parse_qs(query)
               for k in params: params[k] = params[k][0] if isinstance(params[k], list) else params[k]
-              return {'name': safe_name(name), 'type': 'tuic', 'server': server, 'port': port, 'uuid': uuid, 'password': password,
-                      'congestion_control': params.get('congestion_control', 'bbr'), 'sni': params.get('sni', server),
-                      'skip-cert-verify': params.get('allow_insecure', '0') == '1'}
+              return {
+                  'name': safe_name(name),
+                  'type': 'tuic',
+                  'server': server,
+                  'port': port,
+                  'uuid': uuid,
+                  'password': password,
+                  'congestion_control': params.get('congestion_control', 'bbr'),
+                  'sni': params.get('sni', server),
+                  'skip-cert-verify': params.get('allow_insecure', '0') == '1',
+              }
 
           # ---------- Основной сбор ----------
           url = os.environ['SOURCE_URL']
@@ -186,17 +202,69 @@ jobs:
               elif line.startswith('hysteria://') or line.startswith('hy2://'): proxies.append(parse_hysteria(line))
               elif line.startswith('tuic://'): proxies.append(parse_tuic(line))
 
-          # Фильтруем None
           proxies = [p for p in proxies if p is not None]
 
           if not proxies:
               print('ERROR: No proxies extracted')
               sys.exit(1)
 
+          # Сохраняем proxies.yaml
           with open('proxies.yaml', 'w') as f:
               yaml.dump({'proxies': proxies}, f, allow_unicode=True, sort_keys=False)
-
           print(f'proxies.yaml written with {len(proxies)} proxies.')
+
+          # Создаём config.yaml с красивыми группами
+          config = {
+              'mixed-port': 7890,
+              'allow-lan': True,
+              'mode': 'rule',
+              'log-level': 'info',
+              'external-controller': '0.0.0.0:9090',
+              'proxy-providers': {
+                  'all-servers': {
+                      'type': 'http',
+                      'url': 'https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/proxies.yaml',
+                      'interval': 3600,
+                      'path': './proxies/provider.yaml',
+                      'health-check': {
+                          'enable': True,
+                          'url': 'http://www.gstatic.com/generate_204',
+                          'interval': 300
+                      }
+                  }
+              },
+              'proxy-groups': [
+                  {
+                      'name': '🚀 Auto-Select',
+                      'type': 'url-test',
+                      'proxies': ['all-servers'],
+                      'url': 'http://www.gstatic.com/generate_204',
+                      'interval': 300
+                  },
+                  {
+                      'name': '🌍 Global',
+                      'type': 'select',
+                      'proxies': ['🚀 Auto-Select', 'all-servers', 'DIRECT']
+                  },
+                  {
+                      'name': '🛑 Direct',
+                      'type': 'select',
+                      'proxies': ['DIRECT']
+                  }
+              ],
+              'rules': [
+                  'DOMAIN-SUFFIX,local,DIRECT',
+                  'IP-CIDR,10.0.0.0/8,DIRECT',
+                  'IP-CIDR,127.0.0.0/8,DIRECT',
+                  'IP-CIDR,172.16.0.0/12,DIRECT',
+                  'IP-CIDR,192.168.0.0/16,DIRECT',
+                  'MATCH,🚀 Auto-Select'
+              ]
+          }
+
+          with open('config.yaml', 'w') as f:
+              yaml.dump(config, f, allow_unicode=True, sort_keys=False)
+          print('config.yaml generated with correct groups.')
 
           # Обновляем README
           now = datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')
@@ -205,7 +273,6 @@ jobs:
           with open('README.md', 'r') as f:
               readme = f.read()
 
-          # Замена между маркерами
           start_marker = '<!-- PROXY_COUNT_START -->'
           end_marker = '<!-- PROXY_COUNT_END -->'
           if start_marker in readme and end_marker in readme:
@@ -217,16 +284,17 @@ jobs:
               )
               with open('README.md', 'w') as f:
                   f.write(readme)
-              print('README.md updated with proxy count.')
+              print('README updated.')
           else:
-              print('Warning: Placeholder not found in README, skipping update.')
+              print('README markers not found, skipping.')
           "
+
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add proxies.yaml README.md
+          git add proxies.yaml config.yaml README.md
           git diff --staged --quiet || (
-            git commit -m "🔄 Update proxies and README counter [skip ci]"
+            git commit -m "🔄 Update proxies, config and README [skip ci]"
             git push
           )
