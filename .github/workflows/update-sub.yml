@@ -1,4 +1,4 @@
-name: Update proxies and config hourly
+name: Build simple Goida 26 config
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  update:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,19 +21,18 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml requests
 
-      - name: Fetch proxies, update config and README
+      - name: Generate Goida 26 by Crolan config.yaml
         env:
           SOURCE_URL: ${{ secrets.SOURCE_URL }}
         run: |
           python -c "
           import os, sys, base64, re, json, yaml, requests
           from urllib.parse import urlparse, parse_qs, unquote
-          from datetime import datetime, timezone
 
-          # ---------- Все парсеры (VLESS, VMess, Trojan, SS, Hysteria, TUIC) ----------
           def safe_name(name):
               return name.strip()[:80]
 
+          # ---------- Парсеры (VLESS, VMess, Trojan, SS, Hysteria, TUIC) ----------
           def parse_vless(uri):
               m = re.match(r'vless://([a-f0-9-]+)@([^:]+):(\d+)\?(\S+)#(.+)', uri)
               if not m: return None
@@ -179,7 +178,7 @@ jobs:
                   'skip-cert-verify': params.get('allow_insecure', '0') == '1',
               }
 
-          # ---------- Основной сбор ----------
+          # ---------- Сбор прокси ----------
           url = os.environ['SOURCE_URL']
           resp = requests.get(url, timeout=30)
           resp.raise_for_status()
@@ -208,93 +207,37 @@ jobs:
               print('ERROR: No proxies extracted')
               sys.exit(1)
 
-          # Сохраняем proxies.yaml
-          with open('proxies.yaml', 'w') as f:
-              yaml.dump({'proxies': proxies}, f, allow_unicode=True, sort_keys=False)
-          print(f'proxies.yaml written with {len(proxies)} proxies.')
+          proxy_names = [p['name'] for p in proxies]
 
-          # Создаём config.yaml с красивыми группами
+          # ---------- Минималистичный конфиг ----------
           config = {
-              'mixed-port': 7890,
-              'allow-lan': True,
-              'mode': 'rule',
-              'log-level': 'info',
-              'external-controller': '0.0.0.0:9090',
-              'proxy-providers': {
-                  'all-servers': {
-                      'type': 'http',
-                      'url': 'https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/proxies.yaml',
-                      'interval': 3600,
-                      'path': './proxies/provider.yaml',
-                      'health-check': {
-                          'enable': True,
-                          'url': 'http://www.gstatic.com/generate_204',
-                          'interval': 300
-                      }
-                  }
-              },
+              'proxies': proxies,
               'proxy-groups': [
                   {
-                      'name': '🚀 Auto-Select',
-                      'type': 'url-test',
-                      'proxies': ['all-servers'],
-                      'url': 'http://www.gstatic.com/generate_204',
-                      'interval': 300
-                  },
-                  {
-                      'name': '🌍 Global',
+                      'name': 'Goida 26 by Crolan',
                       'type': 'select',
-                      'proxies': ['🚀 Auto-Select', 'all-servers', 'DIRECT']
-                  },
-                  {
-                      'name': '🛑 Direct',
-                      'type': 'select',
-                      'proxies': ['DIRECT']
+                      'proxies': proxy_names
                   }
               ],
               'rules': [
-                  'DOMAIN-SUFFIX,local,DIRECT',
-                  'IP-CIDR,10.0.0.0/8,DIRECT',
-                  'IP-CIDR,127.0.0.0/8,DIRECT',
-                  'IP-CIDR,172.16.0.0/12,DIRECT',
-                  'IP-CIDR,192.168.0.0/16,DIRECT',
-                  'MATCH,🚀 Auto-Select'
+                  'MATCH,Goida 26 by Crolan'
               ]
           }
 
-          with open('config.yaml', 'w') as f:
+          # Записываем с комментарием в первой строке
+          with open('config.yaml', 'w', encoding='utf-8') as f:
+              f.write('# Goida 26 by Crolan\n')
               yaml.dump(config, f, allow_unicode=True, sort_keys=False)
-          print('config.yaml generated with correct groups.')
 
-          # Обновляем README
-          now = datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')
-          count_str = f'🔄 **Сейчас в подписке:** {len(proxies)} серверов  \n🕒 **Последнее обновление:** {now}'
-
-          with open('README.md', 'r') as f:
-              readme = f.read()
-
-          start_marker = '<!-- PROXY_COUNT_START -->'
-          end_marker = '<!-- PROXY_COUNT_END -->'
-          if start_marker in readme and end_marker in readme:
-              readme = re.sub(
-                  f'{start_marker}.*?{end_marker}',
-                  f'{start_marker}\n{count_str}\n{end_marker}',
-                  readme,
-                  flags=re.DOTALL
-              )
-              with open('README.md', 'w') as f:
-                  f.write(readme)
-              print('README updated.')
-          else:
-              print('README markers not found, skipping.')
+          print(f'config.yaml written with {len(proxies)} proxies.')
           "
 
-      - name: Commit and push changes
+      - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add proxies.yaml config.yaml README.md
+          git add config.yaml
           git diff --staged --quiet || (
-            git commit -m "🔄 Update proxies, config and README [skip ci]"
+            git commit -m "🔄 Goida 26 by Crolan updated [skip ci]"
             git push
           )
