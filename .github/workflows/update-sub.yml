@@ -1,4 +1,4 @@
-name: Build perfect config (Auto + Global)
+name: Build perfect config (Auto + Global + Direct)
 
 on:
   schedule:
@@ -29,7 +29,7 @@ jobs:
           import os, sys, base64, re, json, yaml, requests
           from urllib.parse import urlparse, parse_qs, unquote
 
-          # ---------- Все функции парсинга ----------
+          # ---------- Функции парсинга прокси (без изменений) ----------
           def safe_name(name):
               return name.strip()[:80]
 
@@ -187,22 +187,15 @@ jobs:
               sys.exit(1)
 
           print(f'Fetching from: {url}')
-          try:
-              resp = requests.get(url, timeout=30)
-              resp.raise_for_status()
-          except Exception as e:
-              print(f'ERROR fetching URL: {e}')
-              sys.exit(1)
-
+          resp = requests.get(url, timeout=30)
+          resp.raise_for_status()
           raw = resp.text.strip()
           print(f'Received {len(raw)} bytes.')
 
-          # Пробуем base64 decode
           try:
               decoded = base64.b64decode(raw).decode('utf-8')
               if any(decoded.lstrip().startswith(p) for p in ['proxies:', 'ss://', 'vless://', 'trojan://', 'vmess://', 'hysteria://', 'hy2://', 'tuic://']):
                   raw = decoded
-                  print('Decoded from base64.')
           except: pass
 
           proxies = []
@@ -220,7 +213,7 @@ jobs:
                   elif line.startswith('wireguard://'): proxies.append(parse_wireguard(line))
                   elif line.startswith('http://') or line.startswith('https://') or line.startswith('socks5://'): proxies.append(parse_http_socks(line))
               except Exception as e:
-                  print(f'Skipping line: {line[:100]}... ({e})')
+                  print(f'Skipping: {line[:100]}... ({e})')
 
           if not proxies:
               print('ERROR: No proxies extracted.')
@@ -228,6 +221,7 @@ jobs:
 
           proxy_names = [p['name'] for p in proxies]
 
+          # ---------- Сборка финального конфига ----------
           config = {
               'mixed-port': 7890,
               'allow-lan': True,
@@ -246,7 +240,12 @@ jobs:
                   {
                       'name': '🌍 Global',
                       'type': 'select',
-                      'proxies': ['🚀 Auto-Select'] + proxy_names
+                      'proxies': ['🚀 Auto-Select', 'DIRECT'] + proxy_names
+                  },
+                  {
+                      'name': '🛑 Direct',
+                      'type': 'select',
+                      'proxies': ['DIRECT']
                   }
               ],
               'rules': [
@@ -262,7 +261,7 @@ jobs:
           with open('config.yaml', 'w', encoding='utf-8') as f:
               yaml.dump(config, f, allow_unicode=True, sort_keys=False)
 
-          print(f'config.yaml successfully written with {len(proxies)} proxies.')
+          print(f'config.yaml written with {len(proxies)} proxies.')
           "
       - name: Commit and push
         run: |
