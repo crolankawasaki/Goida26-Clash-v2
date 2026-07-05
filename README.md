@@ -23,6 +23,7 @@
 - [**Clash Mi** (APK с GitHub)](https://github.com/KaringX/clashmi/releases)
 
 ### iOS
+- [**Clash Mi** (App Store)](https://apps.apple.com/app/karing/id6470924433)
 - [**Karing** (App Store)](https://apps.apple.com/app/karing/id6470924433)
 - [**Stash** (App Store)](https://apps.apple.com/app/stash/id1596063349)
 
@@ -30,7 +31,7 @@
 - [**Clash Verge**](https://github.com/clash-verge-rev/clash-verge-rev/releases)
 - [**Mihomo Party**](https://github.com/mihomo-party-org/mihomo-party/releases)
 
-> ❗ FLClashX и старые Clash для Android (Premium) **не подходят** — они не умеют работать с современными протоколами.
+> ❗ FLClashX и старые Clash **не подходят** — они не умеют работать с современными протоколами.
 
 ---
 
@@ -40,7 +41,7 @@
 2. В разделе «Подписка» или «Профиль» вставь ссылку:  
    `https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/config.yaml`
 
-После синхронизации появится группа **«Goida 26 by Crolan»** со всеми серверами. Выбирай любой — и работай.
+После синхронизации появится группа **«Goida 26 »** со всеми серверами. Выбирай любой — и работай.
 
 ---
 
@@ -48,7 +49,6 @@
 
 - Специальный скрипт (GitHub Actions) каждый час забирает свежий список из источника.
 - Тебе **ничего не нужно делать** — просто обнови подписку в приложении, когда захочешь.
-- Счётчик в этом ридми обновляется вместе со списком серверов.
 
 ---
 
@@ -61,4 +61,4 @@
 ---
 
 **Автор:** Crolan  
-**Источник:** Goida 26
+**Источник:** Goida 26 от AvenCores
