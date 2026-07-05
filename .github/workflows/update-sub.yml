@@ -1,4 +1,4 @@
-name: Build simple config (Auto + Global)
+name: Build perfect config (Auto + Global)
 
 on:
   schedule:
@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml requests
 
-      - name: Generate config.yaml with all proxies
+      - name: Generate full config.yaml
         env:
           SOURCE_URL: ${{ secrets.SOURCE_URL }}
         run: |
@@ -29,7 +29,7 @@ jobs:
           import os, sys, base64, re, json, yaml, requests
           from urllib.parse import urlparse, parse_qs, unquote
 
-          # ---------- Парсеры ----------
+          # ---------- Все функции парсинга ----------
           def safe_name(name):
               return name.strip()[:80]
 
@@ -180,18 +180,29 @@ jobs:
                   proxy['password'] = unquote(parsed.password) if parsed.password else ''
               return proxy
 
-          # ---------- Основной сбор ----------
+          # ---------- Основной код ----------
           url = os.environ['SOURCE_URL']
-          print(f'Fetching from: {url}')
-          resp = requests.get(url, timeout=30)
-          resp.raise_for_status()
-          raw = resp.text.strip()
-          print(f'Received {len(raw)} bytes')
+          if not url:
+              print('ERROR: SOURCE_URL is not set')
+              sys.exit(1)
 
+          print(f'Fetching from: {url}')
+          try:
+              resp = requests.get(url, timeout=30)
+              resp.raise_for_status()
+          except Exception as e:
+              print(f'ERROR fetching URL: {e}')
+              sys.exit(1)
+
+          raw = resp.text.strip()
+          print(f'Received {len(raw)} bytes.')
+
+          # Пробуем base64 decode
           try:
               decoded = base64.b64decode(raw).decode('utf-8')
               if any(decoded.lstrip().startswith(p) for p in ['proxies:', 'ss://', 'vless://', 'trojan://', 'vmess://', 'hysteria://', 'hy2://', 'tuic://']):
                   raw = decoded
+                  print('Decoded from base64.')
           except: pass
 
           proxies = []
@@ -209,10 +220,10 @@ jobs:
                   elif line.startswith('wireguard://'): proxies.append(parse_wireguard(line))
                   elif line.startswith('http://') or line.startswith('https://') or line.startswith('socks5://'): proxies.append(parse_http_socks(line))
               except Exception as e:
-                  print(f'Skipping: {line[:100]}... ({e})')
+                  print(f'Skipping line: {line[:100]}... ({e})')
 
           if not proxies:
-              print('ERROR: No proxies extracted')
+              print('ERROR: No proxies extracted.')
               sys.exit(1)
 
           proxy_names = [p['name'] for p in proxies]
@@ -251,7 +262,7 @@ jobs:
           with open('config.yaml', 'w', encoding='utf-8') as f:
               yaml.dump(config, f, allow_unicode=True, sort_keys=False)
 
-          print(f'config.yaml written with {len(proxies)} proxies.')
+          print(f'config.yaml successfully written with {len(proxies)} proxies.')
           "
       - name: Commit and push
         run: |
@@ -259,6 +270,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add config.yaml
           git diff --staged --quiet || (
-            git commit -m "🔄 Auto-update config [skip ci]"
+            git commit -m "🔄 Perfect config updated [skip ci]"
             git push
           )
