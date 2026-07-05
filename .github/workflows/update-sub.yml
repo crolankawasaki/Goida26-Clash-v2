@@ -1,4 +1,4 @@
-name: Goida 26 v2
+name: Build Goida 26 config (rock-solid Reality fix)
 
 on:
   schedule:
@@ -36,9 +36,17 @@ jobs:
           SOURCE_URL = os.environ['SOURCE_URL']
           OUTPUT_FILE = "config.yaml"
 
-          # ---------- Вспомогательная функция ----------
+          # ---------- Вспомогательные функции ----------
           def is_valid_hex(s):
               return bool(re.fullmatch(r'[0-9a-fA-F]+', s))
+
+          def fix_reality_short_id(proxy, name):
+              """Гарантирует, что short-id корректен (не менее 2 hex‑символов)."""
+              if "reality-opts" in proxy:
+                  sid = proxy["reality-opts"].get("short-id", "")
+                  if not sid or not is_valid_hex(sid) or len(sid) < 2:
+                      print(f"⚠️ Исправлен short-id для {name}: был '{sid}', стал '00'")
+                      proxy["reality-opts"]["short-id"] = "00"
 
           # ---------- Парсеры (все протоколы) ----------
           def parse_vmess(uri):
@@ -160,14 +168,11 @@ jobs:
                   }
                   if parsed.query:
                       query = parse_qs(parsed.query)
-                      # Обработка Reality с исправлением short-id
                       if "security" in query and query["security"][0] == "reality":
                           pbk = query.get("pbk", [""])[0]
                           sid = query.get("sid", [""])[0]
-                          # Если pbk пустой – такой прокси всё равно останется, но не будет работать.
-                          # Исправляем sid, если он невалидный
+                          # Принудительно исправляем sid, если он невалидный
                           if not sid or not is_valid_hex(sid) or len(sid) < 2:
-                              print(f"⚠️ Исправлен short-id для {name}: был '{sid}', стал '00'")
                               sid = "00"
                           proxy["flow"] = query.get("flow", ["xtls-rprx-vision"])[0]
                           proxy["client-fingerprint"] = query.get("fp", ["chrome"])[0]
@@ -191,6 +196,9 @@ jobs:
                           elif net_type == "grpc":
                               proxy["network"] = "grpc"
                               proxy["grpc-opts"] = {"grpc-service-name": query.get("serviceName", [""])[0]}
+                  # Дополнительная гарантия исправления прямо здесь
+                  if "reality-opts" in proxy:
+                      fix_reality_short_id(proxy, name)
                   return proxy
               except:
                   return None
@@ -409,6 +417,12 @@ jobs:
                   fixed.append(p)
               return fixed
 
+          def validate_all_reality_proxies(proxies):
+              """Финальная проверка: у всех Reality-прокси short-id должен быть валидным."""
+              for proxy in proxies:
+                  if proxy.get("type") == "vless" and "reality-opts" in proxy:
+                      fix_reality_short_id(proxy, proxy.get("name", "unknown"))
+
           # ---------- Главный блок ----------
           def main():
               print("🚀 Загрузка списка прокси...")
@@ -420,7 +434,7 @@ jobs:
                   print(f"❌ Ошибка загрузки: {e}")
                   sys.exit(1)
 
-              print("🔍 Парсинг всех форматов (с исправлением Reality)...")
+              print("🔍 Парсинг всех форматов (с двойной защитой Reality)...")
               all_proxies = parse_proxies_from_text(content)
               total_parsed = len(all_proxies)
               print(f"📦 Распознано прокси: {total_parsed}")
@@ -428,6 +442,9 @@ jobs:
               if not all_proxies:
                   print("❌ Нет ни одного прокси")
                   sys.exit(1)
+
+              # Финальная валидация Reality short-id
+              validate_all_reality_proxies(all_proxies)
 
               all_proxies = fix_duplicate_names(all_proxies)
               proxy_names = [p["name"] for p in all_proxies]
@@ -467,7 +484,7 @@ jobs:
                   f.write('# Goida 26 by Crolan\n')
                   yaml.dump(config, f, allow_unicode=True, sort_keys=False)
 
-              print(f"✅ config.yaml сохранён, {len(all_proxies)} прокси (все до единого).")
+              print(f"✅ config.yaml сохранён, {len(all_proxies)} прокси (все Reality исправлены).")
 
               # Обновление README
               now = datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')
@@ -504,6 +521,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add config.yaml README.md
           git diff --staged --quiet || (
-            git commit -m "🔄 Goida 26 config (all servers, fixed Reality) [skip ci]"
+            git commit -m "🔄 Goida 26 config (bulletproof Reality fix) [skip ci]"
             git push
           )
