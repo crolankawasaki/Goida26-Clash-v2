@@ -20,10 +20,8 @@ https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/config.ya
 
 ### Android
 - [**Karing** (APK с GitHub)](https://github.com/KaringX/karing/releases/)
-- [**Clash Mi** (APK с GitHub)](https://github.com/KaringX/clashmi/releases)
 
 ### iOS
-- [**Clash Mi** (App Store)](https://apps.apple.com/us/app/clash-mi/id6744321968)
 - [**Karing** (App Store)](https://apps.apple.com/app/karing/id6470924433)
 - [**Stash** (App Store)](https://apps.apple.com/app/stash/id1596063349)
 
@@ -31,7 +29,7 @@ https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/config.ya
 - [**Clash Verge**](https://github.com/clash-verge-rev/clash-verge-rev/releases)
 - [**Mihomo Party**](https://github.com/mihomo-party-org/mihomo-party/releases)
 
-> ❗ FLClashX и старые Clash **не подходят** — они не умеют работать с современными протоколами.
+> ❗ FLClashX, Clash Mi и старые Clash **не подходят** — они не умеют работать с современными протоколами.
 
 ---
 
@@ -41,7 +39,7 @@ https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/config.ya
 2. В разделе «Подписка» или «Профиль» вставь ссылку:  
    `https://raw.githubusercontent.com/crolankawasaki/Goida26-Clash-v2/main/config.yaml`
 
-После синхронизации появится группа **«Goida 26 »** со всеми серверами. Выбирай любой — и работай.
+После синхронизации появится группа **«Goida 26 »** со всеми серверами. Выбирай любой — и используй.
 
 ---
 
